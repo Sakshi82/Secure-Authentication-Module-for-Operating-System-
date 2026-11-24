@@ -1,0 +1,369 @@
+import React, { useState, useRef } from "react";
+import axios from "axios";
+import { QRCodeCanvas } from "qrcode.react";
+import Webcam from "react-webcam";
+import "./styles.css";
+import ChatBox from './components/ChatBox';
+
+// Signup Component
+const Signup = ({ onBackToLogin }) => {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const handleSignup = async () => {
+    if (!username || !password || !confirmPassword) {
+      setErrorMessage("Please fill in all fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setErrorMessage("Passwords do not match");
+      return;
+    }
+
+    try {
+      const response = await axios.post("http://localhost:5000/signup", {
+        username,
+        password,
+      });
+
+      if (response.data.success) {
+        setSuccessMessage("Account created successfully! Please login.");
+        setTimeout(() => {
+          onBackToLogin();
+        }, 2000);
+      } else {
+        setErrorMessage(response.data.message || "Error creating account");
+      }
+    } catch (err) {
+      setErrorMessage(
+        err.response?.data?.message || 
+        `Error creating account: ${err.message}. Please make sure the backend server is running.`
+      );
+    }
+  };
+
+  return (
+    <div className="auth-container">
+      <h2>Create New Account</h2>
+      {errorMessage && (
+        <div className="error-message">
+          ⚠️ {errorMessage}
+        </div>
+      )}
+      {successMessage && (
+        <div className="success-message">
+          ✅ {successMessage}
+        </div>
+      )}
+      <input
+        type="text"
+        placeholder="Username"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+      />
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      <input
+        type="password"
+        placeholder="Confirm Password"
+        value={confirmPassword}
+        onChange={(e) => setConfirmPassword(e.target.value)}
+      />
+      <button onClick={handleSignup}>Sign Up</button>
+      <p className="auth-link">
+        Already have an account?{" "}
+        <span onClick={onBackToLogin} className="link-text">
+          Login here
+        </span>
+      </p>
+    </div>
+  );
+};
+
+// Dashboard Component
+const Dashboard = ({ username }) => {
+  return (
+    <div className="dashboard">
+      <header className="dashboard-header">
+        <h1>Secure Authentication Module for OS</h1>
+      </header>
+
+      <div className="dashboard-content">
+        <section className="about-section">
+          <h2>About the Project</h2>
+          <div className="scrollable-content">
+            <p>A robust multi-factor authentication system that combines traditional password security with modern biometric verification and time-based OTP validation. This system ensures the highest level of security through a three-step verification process.</p>
+            <p>Key Features:</p>
+            <ul>
+              <li>Multi-factor authentication</li>
+              <li>Biometric face recognition</li>
+              <li>Time-based OTP validation</li>
+              <li>Secure password management</li>
+              <li>Real-time verification</li>
+            </ul>
+          </div>
+        </section>
+
+        <section className="blog-section">
+          <h2>Latest Updates</h2>
+          <div className="scrollable-content">
+            <article className="blog-post">
+              <h3>New Security Features Added</h3>
+              <p>We've implemented enhanced security measures to protect your data...</p>
+            </article>
+            <article className="blog-post">
+              <h3>System Performance Improvements</h3>
+              <p>Recent updates have significantly improved the system's response time...</p>
+            </article>
+            <article className="blog-post">
+              <h3>User Experience Enhancements</h3>
+              <p>We've made several improvements to make the authentication process smoother...</p>
+            </article>
+          </div>
+        </section>
+
+
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [image, setImage] = useState(null);
+  const [qrCode, setQrCode] = useState("");
+  const [step, setStep] = useState(1);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
+  const [showWebcam, setShowWebcam] = useState(false);
+  const webcamRef = useRef(null);
+
+  // Handle Image Upload
+  const handleImageUpload = (event) => {
+    setImage(event.target.files[0]);
+    setErrorMessage("");
+  };
+
+  // Step 1: Verify Password
+  const handleLogin = async () => {
+    try {
+      if (!username || !password) {
+        setErrorMessage("Please enter both username and password");
+        return;
+      }
+      const res = await axios.post("http://localhost:5000/login", {
+        username,
+        password,
+      });
+      if (res.data.success) {
+        setQrCode(res.data.qr);
+        setStep(2);
+        setErrorMessage("");
+      } else {
+        setErrorMessage(res.data.message || "Invalid username or password!");
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setErrorMessage(
+        err.response?.data?.message || 
+        "Error connecting to server. Please try again later."
+      );
+    }
+  };
+
+  // Step 2: Upload Face Image
+  const handleCapture = async () => {
+    if (webcamRef.current) {
+      const imageSrc = webcamRef.current.getScreenshot();
+      // Convert base64 image to blob
+      const base64Data = imageSrc.split(',')[1];
+      const blob = await fetch(`data:image/jpeg;base64,${base64Data}`).then(res => res.blob());
+      
+    const formData = new FormData();
+      formData.append('image', blob, 'webcam.jpg');
+      formData.append('username', username);
+
+    try {
+      const res = await axios.post("http://localhost:5000/face-auth", formData);
+      if (res.data.success) {
+        setStep(3);
+          setErrorMessage("");
+          setShowWebcam(false);
+      } else {
+          setErrorMessage(res.data.message || "Face verification failed! Please try again.");
+      }
+    } catch (err) {
+        setErrorMessage(
+          err.response?.data?.message || 
+          "Error processing face verification. Please try again."
+        );
+      }
+    }
+  };
+
+  // Step 3: Verify OTP
+  const handleOtpVerify = async () => {
+    try {
+      if (!otp) {
+        setErrorMessage("Please enter the OTP code");
+        return;
+      }
+      const res = await axios.post("http://localhost:5000/verify-otp", {
+        username,
+        otp,
+      });
+      if (res.data.success) {
+        setStep(4);
+        setErrorMessage("");
+      } else {
+        setErrorMessage("Invalid OTP code! Please check and try again.");
+      }
+    } catch (err) {
+      setErrorMessage("Error verifying OTP. Please try again.");
+    }
+  };
+
+  return (
+    <>
+      <div className="background-animation">
+        <div className="network-grid"></div>
+        <div className="network-particles">
+          <span className="particle-1"></span>
+          <span className="particle-2"></span>
+          <span className="particle-3"></span>
+          <span className="particle-4"></span>
+          <span className="particle-5"></span>
+          <span className="particle-6"></span>
+        </div>
+        <div className="scanning-line-horizontal"></div>
+        <div className="scanning-line-vertical"></div>
+        <div className="binary-rain">
+          {Array(20).fill('').map((_, i) => (
+            <div key={i} style={{position: 'absolute', left: `${i * 5}%`}}>
+              {'01'.repeat(100)}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className={`container ${showDashboard ? 'dashboard-active' : ''}`}>
+        {!showDashboard ? (
+          <>
+      <h2>Secure Authentication System</h2>
+
+            {errorMessage && (
+              <div className="error-message">
+                ⚠️ {errorMessage}
+              </div>
+            )}
+
+            {showSignup ? (
+              <Signup onBackToLogin={() => setShowSignup(false)} />
+            ) : (
+              <>
+      {step === 1 && (
+        <>
+                    <input 
+                      type="text" 
+                      placeholder="Username" 
+                      value={username} 
+                      onChange={(e) => setUsername(e.target.value)} 
+                    />
+                    <input 
+                      type="password" 
+                      placeholder="Password" 
+                      value={password} 
+                      onChange={(e) => setPassword(e.target.value)} 
+                    />
+          <button onClick={handleLogin}>Login</button>
+                    <p className="auth-link">
+                      Don't have an account?{" "}
+                      <span onClick={() => setShowSignup(true)} className="link-text">
+                        Sign up here
+                      </span>
+                    </p>
+        </>
+      )}
+
+      {step === 2 && (
+        <>
+          <h3>Step 2: Face Verification</h3>
+                    <div className="webcam-container">
+                      {showWebcam ? (
+                        <>
+                          <Webcam
+                            ref={webcamRef}
+                            screenshotFormat="image/jpeg"
+                            mirrored={true}
+                            className="webcam"
+                          />
+                          <div className="webcam-buttons">
+                            <button onClick={handleCapture}>Capture & Verify</button>
+                            <button onClick={() => setShowWebcam(false)} className="cancel-btn">
+                              Cancel
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <button onClick={() => setShowWebcam(true)}>
+                          Start Camera
+                        </button>
+                      )}
+                    </div>
+        </>
+      )}
+
+      {step === 3 && (
+        <>
+          <h3>Step 3: Enter OTP</h3>
+          <div className="qr-container">
+            <QRCodeCanvas 
+              value={qrCode} 
+              size={256}
+              level="H"
+              includeMargin={true}
+            />
+            <p className="qr-instructions">Scan this QR code with your authenticator app</p>
+          </div>
+          <input 
+            type="text" 
+            placeholder="Enter OTP" 
+            value={otp} 
+            onChange={(e) => setOtp(e.target.value)} 
+          />
+          <button onClick={handleOtpVerify}>Verify OTP</button>
+        </>
+      )}
+
+                {step === 4 && (
+        <div className="success-container">
+          <h2>✅ Authentication Successful</h2>
+          <p>Welcome, {username}! Your authentication is complete and secure.</p>
+                    <button className="dashboard-btn" onClick={() => setShowDashboard(true)}>
+                      Go to Dashboard
+                    </button>
+        </div>
+      )}
+              </>
+            )}
+          </>
+        ) : (
+          <Dashboard username={username} />
+      )}
+    </div>
+
+      {/* Chat box placed outside the container */}
+      <ChatBox />
+    </>
+  );
+}
